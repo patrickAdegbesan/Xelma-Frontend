@@ -4,6 +4,7 @@ import StatsCard from './StatsCard';
 import { useWalletStore } from '../store/useWalletStore';
 import { claim_winnings } from '../lib/xelma-contract';
 import type { MockUserStats } from '../types';
+import { toast } from 'sonner';
 
 // Keep the real selectors (selectIsWalletConnected derives from state) and only
 // stub the hook itself so we can drive wallet state per test.
@@ -229,6 +230,40 @@ describe('StatsCard', () => {
         expect(screen.getByText('Rewards Claimed!')).toBeInTheDocument();
       });
       expect(claim_winnings).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a success toast with amount, short hash and explorer action after a claim', async () => {
+      setWalletState({ status: 'connected', publicKey: 'GTEST' });
+      vi.mocked(claim_winnings).mockResolvedValue({ txHash: '0123456789abcdef', ledger: 1 });
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+      renderCard({ pendingWinnings: 1000 });
+
+      fireEvent.click(screen.getByRole('button', { name: /claim rewards/i }));
+      await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
+
+      const [title, options] = vi.mocked(toast.success).mock.calls[0];
+      expect(title).toBe('Rewards claimed');
+      expect(options?.description).toBe('1,000 vXLM · Tx 012345…abcdef');
+
+      const action = options?.action as { label: string; onClick: () => void };
+      expect(action.label).toBe('View on StellarExpert');
+      action.onClick();
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/^https:\/\/stellar\.expert\/explorer\/(testnet|public)\/tx\/0123456789abcdef$/),
+        '_blank',
+        'noopener,noreferrer',
+      );
+      openSpy.mockRestore();
+    });
+
+    it('does not show a success toast when the claim fails', async () => {
+      setWalletState({ status: 'connected', publicKey: 'GTEST' });
+      vi.mocked(claim_winnings).mockRejectedValue(new Error('User rejected'));
+      renderCard({ pendingWinnings: 1000 });
+
+      fireEvent.click(screen.getByRole('button', { name: /claim rewards/i }));
+      await waitFor(() => expect(screen.getByText(/transaction failed/i)).toBeInTheDocument());
+      expect(toast.success).not.toHaveBeenCalled();
     });
 
     it('shows an inline error and retry action when the claim fails', async () => {

@@ -6,7 +6,9 @@ import { formatVXLM } from '../lib/utils';
 import RankProgressBar from './RankProgressBar';
 import PanelHeader from './ui/PanelHeader';
 import GlassCard from './ui/GlassCard';
-import TxStatusTimeline, { useTxStatusMachine } from './TxStatusTimeline';
+import { toast } from 'sonner';
+import { txUrl } from '../lib/explorer';
+import TxStatusTimeline, { formatTxHash, useTxStatusMachine } from './TxStatusTimeline';
 import MaskedBalance from './MaskedBalance';
 
 interface StatsCardProps {
@@ -14,6 +16,27 @@ interface StatsCardProps {
   isLoading?: boolean;
   error?: string;
   onRetry?: () => void;
+}
+
+/**
+ * Success toast for a confirmed claim: amount, truncated tx hash, and a
+ * network-aware StellarExpert action. Only called after claim_winnings
+ * resolves, so rejected or failed transactions never show it.
+ */
+function showClaimSuccessToast(amount: number, txHash: string) {
+  const parts = [];
+  if (amount > 0) parts.push(`${amount.toLocaleString()} vXLM`);
+  if (txHash) parts.push(`Tx ${formatTxHash(txHash)}`);
+
+  toast.success('Rewards claimed', {
+    description: parts.join(' · ') || undefined,
+    action: txHash
+      ? {
+          label: 'View on StellarExpert',
+          onClick: () => window.open(txUrl(txHash), '_blank', 'noopener,noreferrer'),
+        }
+      : undefined,
+  });
 }
 
 export default function StatsCard({ stats, isLoading, error, onRetry }: StatsCardProps) {
@@ -31,9 +54,13 @@ export default function StatsCard({ stats, isLoading, error, onRetry }: StatsCar
     // Guard against double-submits while a claim is already in-flight.
     if (!canClaim || !publicKey || !tx.start()) return;
 
+    // Snapshot the amount before the claim: stats refresh after success.
+    const claimedAmount = pendingWinnings;
+
     try {
       const result = await claim_winnings(publicKey, tx.updateStatus);
       tx.succeed(result.txHash);
+      showClaimSuccessToast(claimedAmount, result.txHash);
 
       // Refresh wallet balance/state
       await checkConnection();
