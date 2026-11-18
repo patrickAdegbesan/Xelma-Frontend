@@ -131,13 +131,33 @@ describe('StatsCard', () => {
       expect(button).toHaveAttribute('title', 'Connect wallet to claim');
     });
 
-    it('is disabled when connected but there are no pending winnings', () => {
+    it('shows a helpful empty state instead of a dead button when there is nothing to claim', () => {
       setWalletState({ status: 'connected', publicKey: 'GTEST' });
       renderCard({ pendingWinnings: 0 });
 
-      const button = screen.getByRole('button', { name: /claim rewards/i });
-      expect(button).toBeDisabled();
-      expect(button).toHaveAttribute('title', 'No pending rewards');
+      expect(screen.queryByRole('button', { name: /claim rewards/i })).not.toBeInTheDocument();
+      const empty = screen.getByTestId('claim-empty-state');
+      expect(within(empty).getByText('No rewards to claim yet')).toBeInTheDocument();
+      expect(within(empty).getByText(/win a round/i)).toBeInTheDocument();
+    });
+
+    it('still shows the connect-wallet prompt (not the empty state) when disconnected', () => {
+      setWalletState({ status: 'idle', publicKey: null });
+      renderCard({ pendingWinnings: 0 });
+
+      expect(screen.queryByTestId('claim-empty-state')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /claim rewards/i })).toBeDisabled();
+      expect(screen.getByText('Connect wallet to claim', { selector: 'p' })).toBeInTheDocument();
+    });
+
+    it('replaces the empty state with the claim button once winnings arrive', () => {
+      setWalletState({ status: 'connected', publicKey: 'GTEST' });
+      const { rerender } = render(<StatsCard stats={{ ...baseStats, pendingWinnings: 0 }} />);
+      expect(screen.getByTestId('claim-empty-state')).toBeInTheDocument();
+
+      rerender(<StatsCard stats={{ ...baseStats, pendingWinnings: 500 }} />);
+      expect(screen.queryByTestId('claim-empty-state')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /claim rewards/i })).toBeEnabled();
     });
 
     it('is enabled when connected and there are pending winnings', () => {

@@ -162,7 +162,17 @@ export default function StatsCard({ stats, isLoading, error, onRetry }: StatsCar
         )}
       </dl>
 
-      {tx.step === 'idle' ? (
+      {tx.step === 'idle' && isWalletConnected && pendingWinnings === 0 ? (
+        <div
+          data-testid="claim-empty-state"
+          className="mt-6 rounded-xl border border-dashed border-white/10 bg-white/5 px-4 py-4 text-center"
+        >
+          <p className="text-sm font-semibold text-gray-300">No rewards to claim yet</p>
+          <p className="mt-1 text-xs text-gray-400">
+            Win a round and your winnings will show up here once it settles.
+          </p>
+        </div>
+      ) : tx.step === 'idle' ? (
         <>
           <button
             type="button"
