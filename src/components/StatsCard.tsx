@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { MockUserStats } from '../types';
 import type { UserStats } from '../lib/api-client';
 import { useWalletStore, selectIsWalletConnected } from '../store/useWalletStore';
@@ -23,9 +24,15 @@ export default function StatsCard({ stats, isLoading, error, onRetry }: StatsCar
 
   // Shared transaction status machine (preparing → signing → submitting)
   const tx = useTxStatusMachine();
+  const claimHintId = useId();
 
   const pendingWinnings = stats?.pendingWinnings || 0;
   const canClaim = isWalletConnected && pendingWinnings > 0 && !tx.isInFlight;
+  const claimHint = !isWalletConnected
+    ? 'Connect wallet to claim'
+    : pendingWinnings === 0
+      ? 'No pending rewards'
+      : 'Ready to claim';
 
   const handleClaim = async () => {
     // Guard against double-submits while a claim is already in-flight.
@@ -115,7 +122,12 @@ export default function StatsCard({ stats, isLoading, error, onRetry }: StatsCar
   }
 
   return (
-    <GlassCard as="section" className="rounded-2xl p-5" aria-labelledby="your-stats-title">
+    <GlassCard
+      as="section"
+      className="rounded-2xl p-5"
+      aria-labelledby="your-stats-title"
+      aria-busy={tx.isInFlight || undefined}
+    >
       <PanelHeader title="Your Record" />
 
       <dl className="mt-5 space-y-4">
@@ -164,20 +176,26 @@ export default function StatsCard({ stats, isLoading, error, onRetry }: StatsCar
 
       {tx.step === 'idle' ? (
         <>
+          {/*
+            aria-disabled (not the native `disabled` attribute) keeps the button
+            in the tab order, so keyboard and screen-reader users can still reach
+            it and hear *why* it is unavailable via aria-describedby. handleClaim
+            already no-ops when canClaim is false.
+          */}
           <button
             type="button"
-            disabled={!canClaim}
+            aria-disabled={!canClaim}
+            aria-describedby={claimHintId}
             onClick={handleClaim}
-            title={!isWalletConnected ? "Connect wallet to claim" : pendingWinnings === 0 ? "No pending rewards" : "Claim your rewards"}
             className={`mt-6 w-full rounded-xl border py-3 text-sm font-semibold transition-colors
-              ${canClaim 
-                ? 'border-amber-400/50 bg-amber-500/20 text-amber-200 hover:bg-amber-500/30' 
+              ${canClaim
+                ? 'border-amber-400/50 bg-amber-500/20 text-amber-200 hover:bg-amber-500/30'
                 : 'cursor-not-allowed border-white/10 bg-white/5 text-gray-500'}`}
           >
             Claim Rewards
           </button>
-          <p className="mt-2 text-center text-xs text-gray-400">
-            {!isWalletConnected ? "Connect wallet to claim" : pendingWinnings === 0 ? "No pending rewards" : "Ready to claim"}
+          <p id={claimHintId} className="mt-2 text-center text-xs text-gray-400">
+            {claimHint}
           </p>
         </>
       ) : (

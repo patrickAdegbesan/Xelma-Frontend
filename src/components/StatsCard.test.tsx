@@ -127,8 +127,8 @@ describe('StatsCard', () => {
       renderCard({ pendingWinnings: 1000 });
 
       const button = screen.getByRole('button', { name: /claim rewards/i });
-      expect(button).toBeDisabled();
-      expect(button).toHaveAttribute('title', 'Connect wallet to claim');
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      expect(button).toHaveAccessibleDescription('Connect wallet to claim');
     });
 
     it('is disabled when connected but there are no pending winnings', () => {
@@ -136,8 +136,8 @@ describe('StatsCard', () => {
       renderCard({ pendingWinnings: 0 });
 
       const button = screen.getByRole('button', { name: /claim rewards/i });
-      expect(button).toBeDisabled();
-      expect(button).toHaveAttribute('title', 'No pending rewards');
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      expect(button).toHaveAccessibleDescription('No pending rewards');
     });
 
     it('is enabled when connected and there are pending winnings', () => {
@@ -145,8 +145,53 @@ describe('StatsCard', () => {
       renderCard({ pendingWinnings: 1000 });
 
       const button = screen.getByRole('button', { name: /claim rewards/i });
-      expect(button).toBeEnabled();
-      expect(button).toHaveAttribute('title', 'Claim your rewards');
+      expect(button).toHaveAttribute('aria-disabled', 'false');
+      expect(button).toHaveAccessibleDescription('Ready to claim');
+    });
+
+    it('does not rely on a title tooltip for the disabled reason', () => {
+      setWalletState({ status: 'idle', publicKey: null });
+      renderCard({ pendingWinnings: 1000 });
+
+      expect(screen.getByRole('button', { name: /claim rewards/i })).not.toHaveAttribute('title');
+    });
+
+    it('stays focusable when unavailable so the reason can be reached by keyboard', () => {
+      setWalletState({ status: 'idle', publicKey: null });
+      renderCard({ pendingWinnings: 1000 });
+
+      const button = screen.getByRole('button', { name: /claim rewards/i });
+      button.focus();
+      expect(button).toHaveFocus();
+    });
+
+    it('does not start a claim when activated while unavailable', () => {
+      setWalletState({ status: 'connected', publicKey: 'GTEST' });
+      renderCard({ pendingWinnings: 0 });
+
+      fireEvent.click(screen.getByRole('button', { name: /claim rewards/i }));
+      expect(claim_winnings).not.toHaveBeenCalled();
+    });
+
+    it('marks the card aria-busy while a claim is in flight', async () => {
+      setWalletState({ status: 'connected', publicKey: 'GTEST' });
+      let resolveClaim!: (value: { txHash: string; ledger: number }) => void;
+      vi.mocked(claim_winnings).mockImplementation(
+        () =>
+          new Promise<{ txHash: string; ledger: number }>((resolve) => {
+            resolveClaim = resolve;
+          }),
+      );
+      renderCard({ pendingWinnings: 1000 });
+
+      const card = screen.getByRole('heading', { name: /your record/i }).closest('section')!;
+      expect(card).not.toHaveAttribute('aria-busy');
+
+      fireEvent.click(screen.getByRole('button', { name: /claim rewards/i }));
+      await waitFor(() => expect(card).toHaveAttribute('aria-busy', 'true'));
+
+      resolveClaim({ txHash: 'abc', ledger: 1 });
+      await waitFor(() => expect(card).not.toHaveAttribute('aria-busy'));
     });
   });
 
