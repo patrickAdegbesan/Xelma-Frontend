@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import TxStatusTimeline, { formatTxHash, useTxStatusMachine } from '../TxStatusTimeline';
@@ -149,6 +149,61 @@ describe('TxStatusTimeline', () => {
     render(<TxStatusTimeline step="success" txHash="abc" onDone={onDone} />);
     screen.getByRole('button', { name: /close/i }).click();
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  describe('screen reader announcements', () => {
+    const announcer = () => screen.getByTestId('tx-status-announcer');
+
+    it('announces each step change in plain words via one polite live region', async () => {
+      const { rerender } = render(<TxStatusTimeline step="preparing" />);
+      expect(announcer()).toHaveAttribute('aria-live', 'polite');
+      await waitFor(() => expect(announcer()).toHaveTextContent('Step 1 of 4: Prepare'));
+
+      rerender(<TxStatusTimeline step="signing" />);
+      await waitFor(() => expect(announcer()).toHaveTextContent('Step 2 of 4: Sign'));
+
+      rerender(<TxStatusTimeline step="submitting" />);
+      await waitFor(() => expect(announcer()).toHaveTextContent('Step 3 of 4: Submit'));
+
+      rerender(<TxStatusTimeline step="syncing" />);
+      await waitFor(() => expect(announcer()).toHaveTextContent('Step 4 of 4: Sync'));
+
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+
+    it('keeps the same live region node across steps so it is not re-inserted', async () => {
+      const { rerender } = render(<TxStatusTimeline step="preparing" />);
+      const node = announcer();
+      rerender(<TxStatusTimeline step="submitting" />);
+      rerender(<TxStatusTimeline step="success" successTitle="Rewards Claimed!" txHash="abc" />);
+      expect(announcer()).toBe(node);
+      await waitFor(() => expect(node).toHaveTextContent('Transaction confirmed'));
+    });
+
+    it('does not change the announcement on re-renders within the same step', async () => {
+      const { rerender } = render(<TxStatusTimeline step="signing" />);
+      await waitFor(() => expect(announcer()).toHaveTextContent(/Step 2 of 4/));
+      const before = announcer().textContent;
+
+      rerender(<TxStatusTimeline step="signing" />);
+      rerender(<TxStatusTimeline step="signing" />);
+      expect(announcer().textContent).toBe(before);
+    });
+
+    it('leaves failures to the error alert so they are not read twice', async () => {
+      const { rerender } = render(<TxStatusTimeline step="submitting" />);
+      rerender(<TxStatusTimeline step="error" errorMessage="User rejected" />);
+
+      expect(screen.getByRole('alert')).toHaveTextContent('User rejected');
+      await waitFor(() => expect(announcer()).toBeEmptyDOMElement());
+    });
+
+    it('marks the active step with aria-current', () => {
+      render(<TxStatusTimeline step="signing" />);
+      const current = document.querySelectorAll('[aria-current="step"]');
+      expect(current).toHaveLength(1);
+      expect(current[0]).toHaveTextContent('Sign');
+    });
   });
 
   it('renders error message with Retry and Cancel actions', () => {
